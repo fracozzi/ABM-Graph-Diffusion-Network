@@ -9,12 +9,6 @@ from einops import rearrange
 import argparse
 import random
 
-"""
-All the functions needed to update the state of agents in 
-Predator-Prey can be found in pp_function, which is a
-modified version of Alberto Novati code
-"""
-
 VARIABLES = ['KIND','PHASE','POSITION']
 GRID_SIZE = 32
 
@@ -89,40 +83,32 @@ class PredatorPreyABM(ABM):
 
 def main():
 
+    # Specify ABM parameters
+
     # Probabilities = [TO DIE, TO MOVE, TO REPRODUCE,ALREADY PREGNANT, ALREADY DEAD, NOT BORN YET]
-
-    z_pred_prey   = torch.tensor([0.17, 0.45, 0.38, 0.0, 0.0, 0.0]) #Pred params with preys
-    z_pred_noprey = torch.tensor([0.24, 0.58, 0.18, 0.0, 0.0, 0.0]) #Pred params with no preys
-    z_prey_pred   = torch.tensor([0.28, 0.44, 0.28, 0.0, 0.0, 0.0]) #Prey params with preds
-    z_prey_nopred = torch.tensor([0.17, 0.42, 0.41, 0.0, 0.0, 0.0]) #Prey params with no preds
-    z_pregnant = torch.tensor([0.0, 0.0, 0.0, 1.0, 0.0, 0.0])
-    z_dead = torch.tensor([0.0, 0.0, 0.0, 0.0, 1.0, 0.0])
-    z_not_born_yet = torch.tensor([0.0, 0.0, 0.0, 0.0, 0.0, 1.0])    
-
-    Z_0 = torch.vstack((z_pred_prey,z_pred_noprey,z_prey_pred,z_prey_nopred,z_pregnant,z_dead,z_not_born_yet))
     
-    Z_1 = torch.tensor([[0.15, 0.45, 0.4, 0.0, 0.0, 0.0],   #pred+prey
+    Psi_1 = torch.tensor([[0.15, 0.45, 0.4, 0.0, 0.0, 0.0],   #pred+prey
                             [0.25, 0.55, 0.2, 0.0, 0.0, 0.0],    #pred+noprey 
                             [0.3, 0.45, 0.25, 0.0, 0.0, 0.0],   #prey+pred
                             [0.15, 0.4, 0.45, 0.0, 0.0, 0.0],   #prey+nopred
-                            [0.0, 0.0, 0.0, 1.0, 0.0, 0.0],
+                            [0.0, 0.0, 0.0, 1.0, 0.0, 0.0],     
                             [0.0, 0.0, 0.0, 0.0, 1.0, 0.0],
                             [0.0, 0.0, 0.0, 0.0, 0.0, 1.0]]) 
-    Z_2 = torch.tensor([[0.35,0.45,0.2,0.0,0.0,0.0],       #pred+prey
+    Psi_2 = torch.tensor([[0.35,0.45,0.2,0.0,0.0,0.0],       #pred+prey
                             [0.25,0.6,0.15,0.0,0.0,0.0],       #pred+noprey
                             [0.45,0.5,0.05,0.0,0.0,0.0],       #prey+pred
                             [0.35,0.35,0.3,0.0,0.0,0.0],       #prey+nopred
                             [0.0, 0.0, 0.0, 1.0, 0.0, 0.0],
                             [0.0, 0.0, 0.0, 0.0, 1.0, 0.0],
                             [0.0, 0.0, 0.0, 0.0, 0.0, 1.0]])
-    Z_3 = torch.tensor([[0.15,0.3,0.55,0.0,0.0,0.0],       #pred+prey
+    Psi_3 = torch.tensor([[0.15,0.3,0.55,0.0,0.0,0.0],       #pred+prey
                             [0.3,0.55,0.15,0.0,0.0,0.0],       #pred+noprey
                             [0.7,0.2,0.10,0.0,0.0,0.0],       #prey+pred
                             [0.1,0.4,0.5,0.0,0.0,0.0],       #prey+nopred
                             [0.0, 0.0, 0.0, 1.0, 0.0, 0.0],
                             [0.0, 0.0, 0.0, 0.0, 1.0, 0.0],
                             [0.0, 0.0, 0.0, 0.0, 0.0, 1.0]])
-    Z_4 = torch.tensor([[0.15,0.35,0.5,0.0,0.0,0.0],       #pred+prey
+    Psi_4 = torch.tensor([[0.15,0.35,0.5,0.0,0.0,0.0],       #pred+prey
                             [0.25,0.45,0.3,0.0,0.0,0.0],       #pred+noprey
                             [0.45,0.4,0.15,0.0,0.0,0.0],       #prey+pred
                             [0.3,0.4,0.3,0.0,0.0,0.0],       #prey+nopred
@@ -130,63 +116,34 @@ def main():
                             [0.0, 0.0, 0.0, 0.0, 1.0, 0.0],
                             [0.0, 0.0, 0.0, 0.0, 0.0, 1.0]])
 
-    #Z_set = [Z_1,Z_2,Z_3,Z_4]
-    Z_set = [Z_1]
-
-    #Z = torch.cat((z_pred_prey, z_pred_noprey, z_prey_pred, z_prey_nopred, z_dead, z_not_born_yet)).reshape(6,5)     
+    Psi_set = [Z_1,Z_2,Z_3,Z_4]
     M = 2*GRID_SIZE*GRID_SIZE
     N_MAX = GRID_SIZE*GRID_SIZE
     grid_fill_p = 0.3
     predators_p = 0.5
 
-    #Changing code to generate multiple ramification datasets
+    # Ramification specifications
+
+    n_timesteps = 10 # Number of timestep main branch of ramification
+    n_ramifications = 500 # Number of ramifications 
+
+    save_dir = '/dir/to/save/'
 
     names = ['Z1','Z2','Z3','Z4']
 
-    for j in range(1):
-        for i, Z in enumerate(Z_set):
+    for i, Z in enumerate(Z_set):
 
-            predatorprey_abm = PredatorPreyABM(Z=Z,n_agents=M,max_agent=N_MAX,
-                                        grid_fill_p=grid_fill_p,predators_p=predators_p,
-                                        grid_size=GRID_SIZE)
+        predatorprey_abm = PredatorPreyABM(Z=Z,n_agents=M,max_agent=N_MAX,
+                                    grid_fill_p=grid_fill_p,predators_p=predators_p,
+                                    grid_size=GRID_SIZE)
 
-            ramification = predatorprey_abm.generate_ramifications(n_timesteps=10,n_ramifications=500,
-                                                                seed=random.randint(0,10000))
-            
-            
-            with open(f'/data/big/fcozzi/abm-diffusion/Predator_Prey/experiments/ramifications/final/ramification_100_{j}_{names[i]}.pickle','wb') as f:
-                pickle.dump(ramification,f)
-            """""
-            output = predatorprey_abm.generate_ramifications_from_initial_condition(
-                                                        initial_condition=ramification[-1][0],
-                                                        n_timesteps=10,
-                                                        n_ramifications=100,
-                                                        seed=random.randint(0,10000))
-
-            with open(f'/data/big/fcozzi/abm-diffusion/Predator_Prey/experiments/ramifications/final/future_ramification{j}_{names[i]}.pickle','wb') as f:
-                pickle.dump(output,f)
-            """""
-    """"
-
-    Original code for one ramification
-
-
-    predatorprey_abm = PredatorPreyABM(Z=Z,n_agents=M,max_agent=N_MAX,
-                                       grid_fill_p=grid_fill_p,predators_p=predators_p,
-     
-                                       grid_size=GRID_SIZE)
-    
-
-    output = predatorprey_abm.generate_ramifications(n_timesteps=10,
-                                                    n_ramifications=100,
-                                                    seed=42)
-    
-    
-    with open('/data/fcozzi/abm-diffusion/Predator_Prey/ramifications_pp_small.pickle','wb') as f:
-        pickle.dump(output,f)
-
+        ramification = predatorprey_abm.generate_ramifications(n_timesteps=n_timesteps,n_ramifications=n_ramifications,
+                                                               seed=random.randint(0,10000))
         
-        """
+        path = os.path.join(save_dir, f'ramification_{names[i]}.pickle')
+        with open(path,'wb') as f:
+            pickle.dump(ramification,f)
+            
 
 if __name__ == "__main__":
     main()
