@@ -2,6 +2,7 @@ import numpy as np
 import pickle
 import random
 import os
+import gzip
 import pyrootutils
 
 ROOT_DIR = pyrootutils.setup_root(__file__, indicator="README.md", pythonpath=True)
@@ -115,8 +116,8 @@ def main():
                                     seed=random.randint(0,10000))
         
         #Save output to a pickle file
-        path = os.path.join(save_dir, f'ramification_training_{param}.pickle')
-        with open(path, 'wb') as f:
+        path = os.path.join(save_dir, f'ramification_training_{param}.pickle.gz')
+        with gzip.open(path, 'wb') as f:
             pickle.dump(ramification_training, f)
 
         initial_condition = ramification_training[-1][0]
@@ -130,8 +131,8 @@ def main():
         )
     #
         #Save output to a pickle file
-        path = os.path.join(save_dir, f'ramification_testing_{param}.pickle')
-        with open(path, 'wb') as f:
+        path = os.path.join(save_dir, f'ramification_testing_{param}.pickle.gz')
+        with gzip.open(path, 'wb') as f:
             pickle.dump(ramification_testing, f)
         
 

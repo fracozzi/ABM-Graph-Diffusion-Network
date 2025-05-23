@@ -4,6 +4,7 @@ import torch
 from einops import rearrange
 import random
 import os
+import gzip
 import pyrootutils
 
 ROOT_DIR = pyrootutils.setup_root(__file__, indicator="README.md", pythonpath=True)
@@ -145,8 +146,8 @@ def main():
                                                                seed=random.randint(0,10000))
         
         
-        path = os.path.join(save_dir, f'ramification_training_{names[i]}.pickle')
-        with open(path,'wb') as f:
+        path = os.path.join(save_dir, f'ramification_training_{names[i]}.pickle.gz')
+        with gzip.open(path,'wb') as f:
             pickle.dump(ramification_training,f)
 
         # Create ramification for testing
@@ -159,8 +160,8 @@ def main():
         )
 
         #Save output to a pickle file
-        path = os.path.join(save_dir, f'ramification_testing_{names[i]}.pickle')
-        with open(path, 'wb') as f:
+        path = os.path.join(save_dir, f'ramification_testing_{names[i]}.pickle.gz')
+        with gzip.open(path, 'wb') as f:
             pickle.dump(ramification_testing, f)
         
 
