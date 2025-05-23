@@ -1,11 +1,17 @@
-import sys
-sys.path += ['../../']
-from models.abm.abm import ABM
-
 import numpy as np
 import pickle
 import random
 import os
+import pyrootutils
+
+ROOT_DIR = pyrootutils.setup_root(__file__, indicator="README.md", pythonpath=True)
+
+from models.abm.abm import ABM
+
+RAMIFICATIONS_DIR = os.path.join(ROOT_DIR, "ramifications")
+if not os.path.exists(RAMIFICATIONS_DIR):
+    os.makedirs(RAMIFICATIONS_DIR)
+os.chdir(ROOT_DIR)
 
 SCHELLING_STATE_VARIABLES = ['xcor_turtles', 'ycor_turtles', 'color_turtles']
 grid_max_val = 25
@@ -92,7 +98,8 @@ def main():
     timesteps_testing = 25
     n_ramifications = 500
 
-    save_dir = '../../ramifications/schelling/'
+    sub_dir = 'schelling'
+    save_dir = os.path.join(RAMIFICATIONS_DIR, sub_dir)
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
 

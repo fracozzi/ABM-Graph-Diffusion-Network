@@ -1,15 +1,20 @@
-import sys
-sys.path += ['../../']
-import models.abm.pp_functions as pp
-from models.abm.abm import ABM
-
 import numpy as np
 import pickle
 import torch
 from einops import rearrange
 import random
 import os
+import pyrootutils
 
+ROOT_DIR = pyrootutils.setup_root(__file__, indicator="README.md", pythonpath=True)
+
+import models.abm.pp_functions as pp
+from models.abm.abm import ABM
+
+RAMIFICATIONS_DIR = os.path.join(ROOT_DIR, "ramifications")
+if not os.path.exists(RAMIFICATIONS_DIR):
+    os.makedirs(RAMIFICATIONS_DIR)
+os.chdir(ROOT_DIR)
 
 VARIABLES = ['KIND','PHASE','POSITION']
 GRID_SIZE = 32
@@ -123,9 +128,8 @@ def main():
     n_ramifications = 5
 
     names = ['psi1','psi2','psi3','psi4']
-    base_dir = '../../ramifications'
     sub_dir = 'predatorprey'
-    save_dir = os.path.join(base_dir, sub_dir)
+    save_dir = os.path.join(RAMIFICATIONS_DIR, sub_dir)
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
 
