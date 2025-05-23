@@ -118,9 +118,9 @@ def main():
 
     # Ramification specifications
 
-    timesteps_training = 3
-    timesteps_testing = 3
-    n_ramifications = 5
+    timesteps_training = 10
+    timesteps_testing = 25
+    n_ramifications = 500
 
     names = ['psi1','psi2','psi3','psi4']
     base_dir = '../../ramifications'
