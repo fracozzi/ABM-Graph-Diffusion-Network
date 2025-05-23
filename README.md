@@ -64,7 +64,7 @@ Train the surrogate on the Predator–Prey model with parameter psi2, a learning
 python train_model.py \
   --abm_model predatorprey \
   --model_type surrogate \
-  --parameter psi2 \
+  --parameter psi1 \
   --learning_rate 1e-5 \
   --T_diffusion 100 \
   --n_epochs 100
@@ -73,7 +73,7 @@ python train_model.py \
 Use -h or --help to display all available options and their defaults:
 
 ```bash
-python main.py --help
+python train_model.py --help
 ```
 
 

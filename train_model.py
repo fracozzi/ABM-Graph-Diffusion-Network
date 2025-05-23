@@ -1,12 +1,24 @@
+import argparse
+import pickle
+import os
+import sys
+import gzip
+import torch
+import pyrootutils
+
+ROOT_DIR = pyrootutils.setup_root(__file__, indicator="README.md", pythonpath=True)
+
 from models.surrogate.nnmodel import NNModel
 from models.surrogate.nnmodel_ablation import NNModel_ablation
 from models.abm.predpreyfeaturizer import PredPreyFeaturizer
 from models.abm.schellingfeaturizer import SchellingFeaturizer
 
-import torch
-import argparse
-import pickle
-import os
+os.chdir(ROOT_DIR)
+RAMIFICATIONS_DIR = os.path.join(ROOT_DIR, "ramifications")
+if not os.path.exists(RAMIFICATIONS_DIR):
+    print(f"Ramifications datasets in {RAMIFICATIONS_DIR} does not exist. Please run the scripts to generate them.")
+    sys.exit(1)
+MODELS_DIR = os.path.join(ROOT_DIR, "trained_models")
 
 def main():
 
@@ -29,7 +41,7 @@ def main():
 
 
     # Load the training data
-    with open(f'./ramifications/{abm_model}/ramification_training_{parameter}.pickle', 'rb') as f:
+    with gzip.open(f'{RAMIFICATIONS_DIR}/{abm_model}/ramification_training_{parameter}.pickle.gz', 'rb') as f:
         ramification_training = pickle.load(f)
 
 
@@ -52,7 +64,7 @@ def main():
     model.train(ramification_training, n_epochs=n_epochs)
 
     # Save the model
-    save_dir = f'./trained_models/{abm_model}/{model_type}/'
+    save_dir = f'{MODELS_DIR}/{abm_model}/{model_type}/'
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)   
 
