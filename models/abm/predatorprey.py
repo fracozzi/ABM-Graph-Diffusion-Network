@@ -1,5 +1,7 @@
-import pp_functions as pp
-from abm import ABM
+import sys
+sys.path += ['../../']
+import models.abm.pp_functions as pp
+from models.abm.abm import ABM
 
 import numpy as np
 import pickle
@@ -7,6 +9,7 @@ import torch
 from einops import rearrange
 import random
 import os
+
 
 VARIABLES = ['KIND','PHASE','POSITION']
 GRID_SIZE = 32
@@ -115,12 +118,16 @@ def main():
 
     # Ramification specifications
 
-    timesteps_training = 10
-    timesteps_testing = 25
-    n_ramifications = 500
+    timesteps_training = 3
+    timesteps_testing = 3
+    n_ramifications = 5
 
     names = ['psi1','psi2','psi3','psi4']
-    save_dir = '../../ramifications/predatorprey/'
+    base_dir = '../../ramifications'
+    sub_dir = 'predatorprey'
+    save_dir = os.path.join(base_dir, sub_dir)
+    if not os.path.exists(save_dir):
+        os.makedirs(save_dir)
 
     for i, Psi in enumerate(Psi_set):
 
@@ -133,9 +140,8 @@ def main():
         ramification_training = predatorprey_abm.generate_ramifications(n_timesteps=timesteps_training,n_ramifications=n_ramifications,
                                                                seed=random.randint(0,10000))
         
-        if not os.path.exists(save_dir):
-            os.makedirs(save_dir)
-        path = os.path.join(save_dir, f'ramification_{names[i]}.pickle')
+        
+        path = os.path.join(save_dir, f'ramification_training_{names[i]}.pickle')
         with open(path,'wb') as f:
             pickle.dump(ramification_training,f)
 

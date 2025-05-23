@@ -13,7 +13,7 @@ class SchellingFeaturizer(ABMFeaturizer):
     def __init__(self):
         pass
 
-    def get_shape_state_features(self,state: np.array) -> tuple:
+    def get_shape_state_features(self) -> tuple:
         # (state dimension, number of classes for discrete feature)
         return (2,2)
     
@@ -67,7 +67,7 @@ class SchellingFeaturizer(ABMFeaturizer):
             an 2x|E| list of edges, where column (i, j) means that
             in this state agent i could affect agent j.
         """
-        
+
         assert SCHELLING_STATE_VARIABLES[0] == 'xcor_turtles'
         assert SCHELLING_STATE_VARIABLES[1] == 'ycor_turtles'
         xt, yt = state[:, [0, 1]].T

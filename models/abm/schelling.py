@@ -1,4 +1,6 @@
-from abm import ABM
+import sys
+sys.path += ['../../']
+from models.abm.abm import ABM
 
 import numpy as np
 import pickle
