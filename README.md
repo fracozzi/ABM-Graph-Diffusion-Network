@@ -76,6 +76,21 @@ Use -h or --help to display all available options and their defaults:
 python train_model.py --help
 ```
 
+3.	Evaluate the Trained Surrogates
+
+After training, assess model fidelity on held-out trajectories using the provided evaluation scripts.
+
+```bash
+python evaluate_predator_prey.py \
+  --model_type <surrogate|ablation> \
+  --psi        <psi1|psi2|psi3|psi4>
+```
+
+For example, to evaluate the surrogate model trained with psi1:
+
+```bash
+python evaluate_predator_prey.py --model_type surrogate --psi psi1
+```
 
 #### Notes
 

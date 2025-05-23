@@ -72,6 +72,9 @@ def main():
         save_path = os.path.join(save_dir, f"model_surrogate_{parameter}.pth")
         torch.save({'ld_model_state_dict': model.ld_model.state_dict(),
                     'graph_model_state_dict': model.graph_model.state_dict(),
+                    'diffusion_timesteps': model.diffusion_timesteps,
+                    'aggregation': model.aggregation,
+                    'learning_rate': model.lr_ld,
                     'losses': model.losses
                     }, save_path)
     
