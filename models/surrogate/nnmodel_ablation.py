@@ -2,20 +2,12 @@ from models.abm.abm import ABM, ABMFeaturizer
 from models.abm.pp_functions import update_parental
 
 import numpy as np
-import pandas as pd
 import random
-import matplotlib.pyplot as plt
 import torch
-from torch import nn, einsum
+from torch import nn
 import torch.nn.functional as F
-from torch.utils.data import DataLoader, TensorDataset
 from torch.optim import Adam
 from tqdm.auto import tqdm 
-from einops import rearrange
-import seaborn as sns
-import torch_geometric as tg
-from torch_geometric.nn import MessagePassing
-import networkx as nx
 from tqdm import tqdm
 
 
@@ -27,7 +19,6 @@ def exists(x):
 def init_weights(m):
     if isinstance(m, nn.Linear):
         torch.nn.init.xavier_uniform_(m.weight)
-        # m.bias.data.fill_(0.01)
 
 def extract(a, t, x_shape):
     batch_size = t.shape[0]
@@ -70,122 +61,136 @@ class Block(nn.Module):
     
 class NetBlock(nn.Module):
     
-    def __init__(self,dim_in,dim_out,*,time_emb_dim=None,state_dim=None,res_unit=False,norm=False):
+    def __init__(self,dim_in,dim_out,*,condition_emb_dim=None,res_unit=False,norm=False):
         super().__init__()
+        
+        # Initialize condition block
         
         self.block1 = Block(dim_in, dim_out)
         self.block2 = Block(dim_out,dim_out)
         
-        if exists(time_emb_dim):
-            self.time_mlp = nn.Sequential(nn.LeakyReLU(negative_slope=0.1),nn.Linear(time_emb_dim,dim_out))
+        if exists(condition_emb_dim):
+            self.condition_mlp = nn.Sequential(nn.LeakyReLU(negative_slope=0.1),nn.Linear(condition_emb_dim,dim_out))
         else:
-            None
-        if exists(state_dim):
-            self.state_mlp = nn.Sequential(nn.LeakyReLU(negative_slope=0.1),nn.Linear(state_dim,dim_out))
-        else:
-            self.state_mlp = None
+            self.condition_mlp = None
+
         if res_unit:
             self.res_block = Block(dim_in,dim_out) if dim_in != dim_out else nn.Identity()
         else:
             self.res_block = self.res_block = None
+
         if norm:
-            #self.normalization = nn.GroupNorm(4,dim_in)
-            #self.normalization = nn.BatchNorm1d(dim_in)
             self.normalization = nn.LayerNorm(dim_in)
         else:
             self.normalization = None
         
         
-    def forward(self,x,time=None,state=None):
+    def forward(self,x,condition=None):
+
+        # Layer normalization
         if exists(self.normalization):
             h = self.normalization(x) 
-        h = self.block1(h)
-        if exists(self.time_mlp) and exists(time):
-            time_emb = self.time_mlp(time)
-            h = h + time_emb
-        if exists(self.state_mlp) and exists(state):
-            state_emb = self.state_mlp(state)
-            h = h + state_emb   
 
+        h = self.block1(h)
+
+        # Condition application
+        if exists(self.condition_mlp) and exists(condition):
+            condition_emb = self.condition_mlp(condition)
+            h = h + condition_emb
+    
         h = self.block2(h)
+
+        # Residual connection
         if exists(self.res_block):
             h = h + self.res_block(x)           
         
-        return h      
+        return h         
 
 class Network(nn.Module):
     def __init__(self,
                  dim,
                  hid_dims=(2,3),
                  with_time_emb=True,
+                 with_state_condition=True,
                  with_domain = True,
                  domain_dim = 16,
-                 with_state_condition=True,
                 ):
         super().__init__()
         
         self.init_dim = dim
         self.final_dim = dim
+        self.condition_dim = 256
         
         if with_time_emb:  
-            time_dim = 256
             self.time_mlp = nn.Sequential(
                 SinusoidalTimeEmbeddings(self.init_dim),
-                nn.Linear(self.init_dim,time_dim),
+                nn.Linear(self.init_dim,self.condition_dim),
                 nn.LeakyReLU(negative_slope=0.1),
-                nn.Linear(time_dim,time_dim)
+                nn.Linear(self.condition_dim,self.condition_dim)
             )  
         else:
             time_dim = None
             self.time_mlp = None
             
         if with_state_condition:
-            state_dim = 256
             self.state_mlp = nn.Sequential(
-                nn.Linear(self.init_dim,state_dim),
+                nn.Linear(self.init_dim,self.condition_dim),
                 nn.LeakyReLU(negative_slope=0.1),
-                nn.Linear(state_dim,state_dim),
+                nn.Linear(self.condition_dim,self.condition_dim),
                 nn.LeakyReLU(negative_slope=0.1),
-                nn.Linear(state_dim,time_dim)
+                nn.Linear(self.condition_dim,self.condition_dim)
                 )
         else:
-            state_dim = None
             self.state_mlp = None    
                    
         if with_domain:
-            condition_dim = 256
-            self.graph_mlp = nn.Sequential(
-                nn.Linear(domain_dim,condition_dim),
+            self.domain_mlp = nn.Sequential(
+                nn.Linear(domain_dim,self.condition_dim),
                 nn.LeakyReLU(negative_slope=0.1),
-                nn.Linear(condition_dim,condition_dim),
+                nn.Linear(self.condition_dim,self.condition_dim),
                 nn.LeakyReLU(negative_slope=0.1),
-                nn.Linear(condition_dim,time_dim),
+                nn.Linear(self.condition_dim,self.condition_dim),
             )
+            
+        # Initial block
             
         self.init_block = Block(self.init_dim,hid_dims[0])
         self.init_block.apply(init_weights)
+
+        # Hidden layers with conditioning
+
         self.blocks = nn.ModuleList([])
         for (dim_in, dim_out) in list(zip(hid_dims[:-1],hid_dims[1:])):
             self.blocks.append(
-                NetBlock(dim_in,dim_out,time_emb_dim=time_dim,state_dim=None,norm=True,res_unit=True)
+                NetBlock(dim_in,dim_out,condition_emb_dim=self.condition_dim,norm=True,res_unit=True)
                 )    
         self.blocks.apply(init_weights)
+
+        # Final block
+
         self.final_block = Block(hid_dims[-1],self.final_dim)
-        self.final_block.apply(init_weights)   
+        self.final_block.apply(init_weights)    
             
-    def forward(self,x,state,graph_condition,time):
-        t_diffusion = self.time_mlp(time)
-        graph = self.graph_mlp(graph_condition)
-        if exists(state) and exists(self.state_mlp):
-            state = self.state_mlp(state)
-            t = t_diffusion + graph + state
-        else:
-            t = t_diffusion + graph
-    
+    def forward(self,x,state,domain,time):
+
+        """ Forward pass of the network. """
+
+        # Condition vector creation
+        state = self.state_mlp(state) if exists(self.state_mlp) else None
+        domain_emb = self.graph_mlp(domain) if exists(self.graph_mlp) else None
+        tau_emb = self.time_mlp(time) if exists(self.time_mlp) else None      
+        condition = state + domain_emb + tau_emb 
+        
+        # Initial block
         x = self.init_block(x)
+
+        # Hidden layers
         for block in self.blocks:
-            x = block(x,t)
+            x = block(x,condition)
+
+        # Final block
         x = self.final_block(x)
+
         return x
 
 # Defining diffusion process
@@ -193,6 +198,9 @@ class Network(nn.Module):
 class Diffusion:
 
     def __init__(self,diffusion_timesteps=100,beta_start=0.0001,beta_end=0.02):
+
+        """ Variance schedule and computing alphas """
+
         self.diffusion_timesteps = diffusion_timesteps
         x = torch.linspace(0,diffusion_timesteps,diffusion_timesteps+1)
         x = torch.cos(x/diffusion_timesteps * torch.pi)
@@ -202,37 +210,40 @@ class Diffusion:
         self.alphas_cumprod_prev = F.pad(self.alphas_cumprod[:-1], (1, 0), value=1.0)
         self.sqrt_recip_alphas = torch.sqrt(1.0 / self.alphas)
 
-        # calculations for diffusion q(x_t | x_{t-1}) and others
+        """ Calculations for diffusion process """
+
         self.sqrt_alphas_cumprod = torch.sqrt(self.alphas_cumprod)
         self.sqrt_one_minus_alphas_cumprod = torch.sqrt(1. - self.alphas_cumprod)
 
-        # calculations for posterior q(x_{t-1} | x_t, x_0)
         self.posterior_variance = self.betas * (1. - self.alphas_cumprod_prev) / (1. - self.alphas_cumprod)
 
     
-    # forward diffusion
-    def q_sample(self,x_start, t, noise=None):
+    # Forward diffusion process
+
+    def q_sample(self,x_start, tau, noise=None):
         if noise is None:
             noise = torch.randn_like(x_start)
 
-        sqrt_alphas_cumprod_t = extract(self.sqrt_alphas_cumprod, t, x_start.shape)
-        sqrt_one_minus_alphas_cumprod_t = extract(
-            self.sqrt_one_minus_alphas_cumprod, t, x_start.shape
+        sqrt_alphas_cumprod_tau = extract(self.sqrt_alphas_cumprod, tau, x_start.shape)
+        sqrt_one_minus_alphas_cumprod_tau = extract(
+            self.sqrt_one_minus_alphas_cumprod, tau, x_start.shape
         )
-        return sqrt_alphas_cumprod_t * x_start + sqrt_one_minus_alphas_cumprod_t * noise
+        return sqrt_alphas_cumprod_tau * x_start + sqrt_one_minus_alphas_cumprod_tau * noise
+    
 
 # Defining the whole model + training + sampling
 
 class NNModel_ablation:
+
     """ Our neural network model. """
 
     def __init__(self, n_features, learning_rate, abm_featurizer: ABMFeaturizer, diffusion_timesteps, domain_dim):
-        self.abm_featurizer = abm_featurizer
-        #self.state_dim = self.abm_featurizer.get_shape_state_features[0]
-        #self.feature_dim = self.abm_featurizer.get_shape_state_features[1]
         
+        self.abm_featurizer = abm_featurizer
         self.feature_dim = n_features
-        self.state_dim = self.feature_dim + 2
+        self.dynamic_feature_idx = self.abm_featurizer.get_shape_state_features()[0]
+        self.state_dim = self.feature_dim + self.abm_featurizer.get_shape_state_features()[0]
+
         self.ld_hidden_dims = [128,256,1024,1024,256,128]
         self.latent_dim = domain_dim
         self.lr_ld = learning_rate
@@ -244,16 +255,16 @@ class NNModel_ablation:
                 with_state_condition=True
         )
         self.diffusion_timesteps = diffusion_timesteps
-        self.optimizer1 = Adam(self.ld_model.parameters(),lr=self.lr_ld)
+        self.optimizer = Adam(self.ld_model.parameters(),lr=self.lr_ld)
         self.losses = []
         
 
-    def p_losses(self,x_start,state,label,t,T,noise=None,loss_type="l2"):
+    def p_losses(self,x_start,state,label,tau,tau_max,noise=None,loss_type="l2"):
         if noise is None:
             noise = torch.randn_like(x_start)
-        diffusion = Diffusion(diffusion_timesteps=T)
-        x_noisy = diffusion.q_sample(x_start=x_start, t=t, noise=noise)
-        predicted_noise = self.ld_model(x_noisy, state, label, t)
+        diffusion = Diffusion(diffusion_timesteps=tau_max)
+        x_noisy = diffusion.q_sample(x_start=x_start, tau=tau, noise=noise)
+        predicted_noise = self.ld_model(x_noisy, state, label, tau)
 
         if loss_type == 'l1':
             loss = F.l1_loss(noise, predicted_noise)
@@ -267,51 +278,63 @@ class NNModel_ablation:
         return loss
 
     def train(self, ramifications, n_epochs=10):
-        """ Train the model using a `ramifications` data set as generated by `generate_ramifications`. """
+
+
+        """ Train the model using a `ramification` dataset """
+
         device = "cuda" if torch.cuda.is_available() else "cpu"
         self.ld_model.to(device)
+
+        # Get the number of timesteps and runs from ramification dataset
         n_timesteps = len(ramifications[1:])
         n_runs = len(ramifications[1])
+
+        # Randomize runs and timesteps
         runs = np.expand_dims(np.arange(0,n_runs),axis=-1)
         sample_number = np.empty((n_timesteps,n_runs,2))
         for t in range(n_timesteps):
             times = np.full((n_runs,1),t)
             sample_number[t] = np.hstack((times,runs))
         sample_number = np.vstack((sample_number))
-        sample_number = sample_number.astype(int)
+        sample_number = sample_number.astype(int)       
+
+
         for epoch in tqdm(range(n_epochs), desc="Training"):
 
             examples = random.sample(range(len(sample_number)),len(sample_number))
             
             for example in examples:
 
-                self.optimizer1.zero_grad()
+                self.optimizer.zero_grad()
 
                 t, run = sample_number[example]
                 
                 prev_state = ramifications[t][0]
+                # Scale features for the current state
                 state_t0 = self.abm_featurizer.scale_abm_state(prev_state)
 
+                # Get domain 
                 n_agents = prev_state.shape[0]
                 domain = np.broadcast_to(state_t0.flatten(),shape=(n_agents,state_t0.flatten().shape[0]))
 
                 next_state = ramifications[t+1][run]
+                # Scale features for future state
                 state_t1 = self.abm_featurizer.scale_abm_state(next_state)
                     
-                state_t1 = torch.tensor(state_t1[:,2:]).to(torch.float32).to(device)
+                state_t1 = torch.tensor(state_t1[:,self.dynamic_feature_idx:]).to(torch.float32).to(device)
                 t_diffusion = torch.randint(0, self.diffusion_timesteps, (n_agents,), device = device).long()
                     
-                    #calculate hidden rappresentation relative to timestep t 
-                prev_state_condition = torch.tensor(state_t0[:,2:]).to(torch.float32).to(device)
+                #calculate hidden rappresentation relative to timestep t 
+                prev_state_condition = torch.tensor(state_t0[:,self.dynamic_feature_idx:]).to(torch.float32).to(device)
                 domain_condition = torch.tensor(domain).to(torch.float32).to(device)
                                         
                     #calculate loss
-                loss = self.p_losses(state_t1, state = prev_state_condition, label = domain_condition ,t = t_diffusion, T = self.diffusion_timesteps, loss_type="l2")
+                loss = self.p_losses(state_t1, state = prev_state_condition, label = domain_condition ,tau = t_diffusion, tau_max = self.diffusion_timesteps, loss_type="l2")
                 self.losses.append(loss.item())
 
                     #propagate gradient back to diffusion model and GNN
                 loss.backward()
-                self.optimizer1.step()
+                self.optimizer.step()
 
 
     @torch.no_grad()
@@ -322,8 +345,9 @@ class NNModel_ablation:
             diffusion.sqrt_one_minus_alphas_cumprod, t, x.shape
         )
         sqrt_recip_alphas_t = extract(diffusion.sqrt_recip_alphas, t, x.shape)
-        # Equation 11 in the paper
-        # Use our model (noise predictor) to predict the mean
+
+        # Generation algorithm
+
         model_mean = sqrt_recip_alphas_t * (
             x - betas_t * self.ld_model(x,state,label,t) / sqrt_one_minus_alphas_cumprod_t
         )
@@ -332,9 +356,8 @@ class NNModel_ablation:
         else:
             posterior_variance_t = extract(diffusion.posterior_variance, t, x.shape)
             noise = torch.randn_like(x)
-            # Algorithm 2 line 4:
-            return model_mean + torch.sqrt(posterior_variance_t) * noise        
-    
+
+            return model_mean + torch.sqrt(posterior_variance_t) * noise     
     @torch.no_grad()
     def next_step_samples(self, state: np.ndarray, seed=42, n_samples=1) -> np.ndarray:
         """ Given a matrix representing the state at t, returns a list of possible outcomes,
@@ -348,24 +371,21 @@ class NNModel_ablation:
         domain = np.broadcast_to(state_array.flatten(),shape=(n_agents,state_array.flatten().shape[0]))
         label = torch.tensor(domain).to(torch.float32).to(device)
         condition = torch.tensor(state_array).to(torch.float32).to(device)
-        state_tensor = condition[:,2:].to(torch.float32).to(device)
+        state_tensor = condition[:,self.dynamic_feature_idx:].to(torch.float32).to(device)
        
         n, c = state_tensor.size()
-        #state_tensor_expand = state_tensor.unsqueeze(axis=0).expand((b,n,c)).to(torch.float32)
-        # start from pure noise (for each example in the batch)
+        samples = []
+
         torch.manual_seed(seed=seed)
-        #img = torch.randn((n,c), device=device)
-        imgs = []
-        
-        #for i in tqdm(reversed(range(0, diffusion_timesteps)), desc='sampling loop time step', total=diffusion_timesteps):
         for j in range(b):
-            img = torch.randn((n,c), device=device,)
+            # Start from random sample
+            sample = torch.randn((n,c), device=device,)
+            # Learned reverse diffusion process
             for i in reversed(range(0,self.diffusion_timesteps)):
-                img = self.p_sample(img, torch.full((n,), i, device=device, dtype=torch.long), i, state = state_tensor,label = label)
-            imgs.append(img.cpu().numpy())
-        imgs = np.array(imgs)
-        return self.abm_featurizer.unscale_abm_state(imgs)
-        #pass
+                sample = self.p_sample(sample, torch.full((n,), i, device=device, dtype=torch.long), i, state = state_tensor,label = label)
+            samples.append(sample.cpu().numpy())
+        samples = np.array(samples)
+        return self.abm_featurizer.unscale_abm_state(samples)
 
 
 class SimulatedABM_ablation1(ABM):
@@ -405,7 +425,6 @@ class SimulatedABM_ablation1(ABM):
         kind_expanded = np.expand_dims(self.initial_state_np[:,0],axis=0).T 
         family = self.initial_state_np[:,-2:]
         new_state = self.initial_state_np
-        #new_state[:,-4:-2][np.isnan(new_state[:,-4:-2])] = -10
         simulation_array[0] = new_state
         new_seed = seed
         for t in tqdm(range(1,simulation_time),desc='Simulation'): 
