@@ -5,7 +5,7 @@ from tqdm import tqdm
 from abc import ABC, abstractmethod
 
 class ABM(ABC):
-    """ This is an interface that all ABM-like classes must implement. See SchellingABM. """
+    """ This is an interface that all ABM-like classes must implement. See SchellingABM or PredatorPreyABM. """
     @abstractmethod
     def initial_state(self):
         """ Create a matrix representing the state at t=0. """
@@ -49,12 +49,10 @@ class ABM(ABC):
         timesteps = []
         main_next_state = initial_condition
         timesteps.append([main_next_state])
-        #for t in tqdm(range(1, n_timesteps), desc="Timesteps"):
-        for t in range(1, n_timesteps):
+        for t in tqdm(range(1, n_timesteps), desc="Timesteps"):
             runs = []
             previous_state = main_next_state
             main_next_state = None
-            #for run in tqdm(range(n_ramifications), desc="Ramifications"):
             for run in range(n_ramifications):
                 state = self.next_step(previous_state)
                 runs.append(state)

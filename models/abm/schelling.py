@@ -1,11 +1,9 @@
-from models.abm.abm import ABM, ABMFeaturizer
+from abm import ABM
 
 import numpy as np
-
-import argparse
 import pickle
 import random
-import tqdm
+import os
 
 SCHELLING_STATE_VARIABLES = ['xcor_turtles', 'ycor_turtles', 'color_turtles']
 grid_max_val = 25
@@ -18,7 +16,6 @@ is_neighbor = lambda x1, x2: (
 
 toroid = lambda x: (x if x <= grid_max_val else (x - 2 * grid_max_val)
                    ) if x >= -grid_max_val else (x + 2 * grid_max_val)
-#def move_agent(i, x, y, max_dist=(grid_max_val * 2 // 5), max_trials=10):
 def move_agent(i, x, y, max_dist=grid_max_val, max_trials=100):
     for _ in range(max_trials):
         heading = np.random.random() * 2 * np.pi
@@ -80,50 +77,53 @@ class SchellingABM(ABM):
         return next_state
 
 def main():
-    # Parse command line arguments
-    parser = argparse.ArgumentParser(description='Generate a ramification data set with Schelling ABM')
-    parser.add_argument('--density', type=float, default=0.75, help='density parameter (default: 0.5)')
-    parser.add_argument('--threshold', type=float, default=0.875, help='threshold parameter (default: 0.8)')
-    parser.add_argument('--n_timesteps', type=int, default=10, help='number of time steps (default: 10)')
-    parser.add_argument('--n_ramifications', type=int, default=500, help='number of ramifications (default: 100)')
-    parser.add_argument('--seed', type=int, default=42, help='seed value (default: 42)')
-    parser.add_argument('--output_path', type=str, default='/data/fcozzi/abm-diffusion/Schelling/final_experiment/ramifications_xi2.pickle',
-                        help='output file path (default: /data/fcozzi/abm-diffusion/Schelling/ramifications.pickle)')
-    args = parser.parse_args()
 
     # Run SchellingABM
     
     params = {'xi1':0.625,
-              'xi2':0.875,
-              'xi3':0.75}
+              'xi3':0.75,
+              'xi2':0.875
+              }
+    
+    grid_density = 0.75
+    timesteps_training = 10
+    timesteps_testing = 25
+    n_ramifications = 500
+
+    save_dir = '../../ramifications/schelling/'
+    if not os.path.exists(save_dir):
+        os.makedirs(save_dir)
+
     for param in params.keys():
+    
+        schelling_abm = SchellingABM(density=grid_density, threshold=params[param])
 
-        #with open(f'/data/fcozzi/abm-diffusion/Schelling/final_experiment/ramifications_{param}.pickle','rb') as f:
-        #    ramification = pickle.load(f)
+        # Generate ramification for training
 
-        #schelling_abm = SchellingABM(density=args.density, threshold=args.threshold)
-        schelling_abm = SchellingABM(density=0.75, threshold=params[param])
-        with open(f'/data/fcozzi/abm-diffusion/Schelling/final_experiment/ramifications_{param}.pickle','rb') as f:
-            output = pickle.load(f)
+        ramification_training = schelling_abm.generate_ramifications(
+                                    n_timesteps=timesteps_training, 
+                                    n_ramifications=n_ramifications, 
+                                    seed=random.randint(0,10000))
+        
+        #Save output to a pickle file
+        path = os.path.join(save_dir, f'ramification_training_{param}.pickle')
+        with open(path, 'wb') as f:
+            pickle.dump(ramification_training, f)
 
-        #output = schelling_abm.generate_ramifications(
-        #                            n_timesteps=args.n_timesteps, 
-        #                            n_ramifications=args.n_ramifications, 
-        #                            seed=random.randint(0,10000))
+        initial_condition = ramification_training[-1][0]
+        # Generate ramification for testing
 
-        future_output = schelling_abm.generate_ramifications_from_initial_condition(
-            initial_condition=output[-1][0],
-            n_timesteps=args.n_timesteps,
-            n_ramifications=args.n_ramifications,
+        ramification_testing = schelling_abm.generate_ramifications_from_initial_condition(
+            initial_condition=initial_condition,
+            n_timesteps=timesteps_testing,
+            n_ramifications=n_ramifications,
             seed=random.randint(0,10000)
         )
-    # Save output to a pickle file
-        #with open(f'/data/fcozzi/abm-diffusion/Schelling/final_experiment/ramifications_{param}.pickle', 'wb') as f:
-        #    pickle.dump(output, f)
-        
-        with open(f'/data/fcozzi/abm-diffusion/Schelling/final_experiment/future_ramifications_{param}.pickle', 'wb') as f:
-            pickle.dump(future_output, f)
-        
+    #
+        #Save output to a pickle file
+        path = os.path.join(save_dir, f'ramification_testing_{param}.pickle')
+        with open(path, 'wb') as f:
+            pickle.dump(ramification_testing, f)
         
 
 if __name__ == "__main__":

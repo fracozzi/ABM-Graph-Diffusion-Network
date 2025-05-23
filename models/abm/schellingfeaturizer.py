@@ -45,18 +45,15 @@ class SchellingFeaturizer(ABMFeaturizer):
         mid_values = np.round((intervals.T[0]+intervals.T[1])/2,2)
         
         state_copy = state.copy()
-        # -- begin of hack .. 
         condition = (state_copy<=intervals[0][0])
         state_copy[condition] = mid_values[0]
         condition = (state_copy>=intervals[-1][-1])
         state_copy[condition] = mid_values[-1]
-        # -- end of hack -- 
         i = 0
         for b_int in intervals:
             condition = (state>=b_int[0])&(state<b_int[1])
             state_copy[condition] = mid_values[i]
             i = i + 1    
-        
 
         state_copy = state_copy*grid_max_val
         state_copy = np.round(state_copy,2)    
@@ -70,12 +67,10 @@ class SchellingFeaturizer(ABMFeaturizer):
             an 2x|E| list of edges, where column (i, j) means that
             in this state agent i could affect agent j.
         """
-        #assert state.shape[0] == self.n_agents ---> I don't know what's going on
+        
         assert SCHELLING_STATE_VARIABLES[0] == 'xcor_turtles'
         assert SCHELLING_STATE_VARIABLES[1] == 'ycor_turtles'
         xt, yt = state[:, [0, 1]].T
-        #grid_max_val = self.abm.grid_max_val  ---> I don't know what's going on
-        #grid_max_val = max(-xt.min(), -yt.min(), xt.max(), yt.max())
         self.n_agents = state.shape[0]
         assert np.min(xt) >= -grid_max_val and np.max(xt) <= grid_max_val
         assert np.min(yt) >= -grid_max_val and np.max(yt) <= grid_max_val

@@ -1,9 +1,3 @@
-#!/usr/bin/env python
-# coding: utf-8
-
-# In[1]:
-
-
 import time
 import torch
 import numpy as np
@@ -36,9 +30,6 @@ def number_initialized_predators(total_agents, predators_p):
 
 
 def init_parental(K,S):
-
-    #pred_eligible_parent = torch.where(torch.logical_and(K == 1, torch.logical_or(S[0,:] == 1, S[2,:] == 1)))[0]
-    #prey_eligible_parent = torch.where(torch.logical_and(K == 0, torch.logical_or(S[0,:] == 1, S[2,:] == 1)))[0]
 
     pred_eligible_parent = torch.where(torch.logical_and(K == 1, S[0,:] == 1))[0]
     prey_eligible_parent = torch.where(torch.logical_and(K == 0, S[0,:] == 1))[0]
@@ -97,7 +88,6 @@ def update_parental(parental_original,K,S):
     pred_pc = parental[pred_parents].long()
     prey_pc = parental[prey_parents].long()
 
-
     # Take aside newly born who can be new parents
 
     pred_newparents = (S[0,pred_pc[:,1]] == 1)
@@ -112,7 +102,6 @@ def update_parental(parental_original,K,S):
     parental[prey_parent_child[:,1],1] = -1
     parental[prey_parent_child[:,0],1] = -1
 
-
     eligible_parents = torch.logical_and(parental[:,0] > -1, parental[:,1] == -1)
     eligible_newborns = torch.logical_and(parental[:,0] == -1, parental[:,1] == -1)
 
@@ -125,7 +114,6 @@ def update_parental(parental_original,K,S):
     
     # Put all together and also add possible new borns 
 
-        
     if pred_eligible_parents.size()[0] >= pred_orphans.size()[0]:
         delta_pred = pred_eligible_parents.size()[0] - pred_orphans.size()[0]
         parental[pred_eligible_parents[:pred_orphans.size()[0]],1] = pred_orphans.float()
@@ -133,8 +121,6 @@ def update_parental(parental_original,K,S):
         max_available_pred = pred_eligible_newborn[:delta_pred].size()[0]
         parental[pred_eligible_parents[pred_orphans.size()[0]:pred_orphans.size()[0]+max_available_pred],1] = pred_eligible_newborn[:delta_pred].float()
         parental[pred_eligible_newborn[:delta_pred],1] = pred_eligible_parents[pred_orphans.size()[0]:pred_orphans.size()[0]+max_available_pred].float()
-        #parental[pred_eligible_parents[pred_orphans.size()[0]:],1] = pred_eligible_newborn[:delta_pred].float()
-        #parental[pred_eligible_newborn[:delta_pred],1] = pred_eligible_parents[pred_orphans.size()[0]:].float()
     else:
         parental[pred_eligible_parents[:pred_orphans.size()[0]],1] = pred_orphans[:pred_eligible_parents.size()[0]].float()
         parental[pred_orphans[:pred_eligible_parents.size()[0]],1] = pred_eligible_parents[:pred_orphans.size()[0]].float()
@@ -148,8 +134,6 @@ def update_parental(parental_original,K,S):
         max_available_prey = prey_eligible_newborn[:delta_prey].size()[0]
         parental[prey_eligible_parents[prey_orphans.size()[0]:prey_orphans.size()[0]+max_available_prey],1] = prey_eligible_newborn[:delta_prey].float()
         parental[prey_eligible_newborn[:delta_prey],1] = prey_eligible_parents[prey_orphans.size()[0]:prey_orphans.size()[0]+max_available_prey].float()
-        #parental[prey_eligible_parents[prey_orphans.size()[0]:],1] = prey_eligible_newborn[:delta_prey].float()
-        #parental[prey_eligible_newborn[:delta_prey],1] = prey_eligible_parents[prey_orphans.size()[0]:].float()
     else:
         parental[prey_eligible_parents[:prey_orphans.size()[0]],1] = prey_orphans[:prey_eligible_parents.size()[0]].float()
         parental[prey_orphans[:prey_eligible_parents.size()[0]],1] = prey_eligible_parents[:prey_orphans.size()[0]].float()
@@ -157,7 +141,6 @@ def update_parental(parental_original,K,S):
         parental[prey_orphans[prey_eligible_parents.size()[0]:].long(),1] = -1
 
     return parental
-
 
 
 def determine_newborns(K, S_current, A_prev, parental):
@@ -179,14 +162,8 @@ def determine_newborns(K, S_current, A_prev, parental):
         Boolean masks: x are predators, y are preys, capital are parents
     """
 
-    #pred_parents = torch.where(torch.logical_and(K == 1, S_current[2,:]==1))[0]
-    #prey_parents = torch.where(torch.logical_and(K == 0, S_current[2,:]==1))[0]
-
     pred_parents = torch.where(torch.logical_and(K == 1, A_prev[3,:]==1))[0]
     prey_parents = torch.where(torch.logical_and(K == 0, A_prev[3,:]==1))[0]
-
-    #pred_parents = torch.where(torch.logical_and(K == 1, A_prev[2,:]==1))[0]
-    #prey_parents = torch.where(torch.logical_and(K == 0, A_prev[2,:]==1))[0]
 
     pred_newborns = parental[pred_parents,1].long()
     prey_newborns = parental[prey_parents,1].long()
@@ -194,7 +171,6 @@ def determine_newborns(K, S_current, A_prev, parental):
     return pred_newborns, prey_newborns, pred_parents, prey_parents, parental
 
 
-# In[ ]:
 def uniform_move_(mask, pos, set_adj, grid_size = 32):
     """Function that updates the position X  of moving agents according to uniform selection
     over the neighboring nodes of the network.
@@ -215,8 +191,6 @@ def uniform_move_(mask, pos, set_adj, grid_size = 32):
     pos[mask,:] += set_adj[torch.randint(0, set_adj.size(0), (mask.size()[0],))] 
     return pos % grid_size
 
-# In[ ]:
-
 ################# VARIABLES EVOLUTIONS ########################
 def evolve_S(A_prev):
     """Evolve State tensor using given performed Actions"""
@@ -224,7 +198,6 @@ def evolve_S(A_prev):
                       [1, 0, 0, 0, 1, 0],
                       [0, 0, 1, 0, 0, 0],
                       [0, 0, 0, 0, 0, 1]])
-    #U = torch.tensor([0, 1, 1, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 1], dtype=torch.int8).reshape(3,5) #Transformation matrix
     return torch.matmul(U, A_prev)
 
 
@@ -248,13 +221,6 @@ def evolve_X(K, S_current, X_prev, A_prev, parental, grid_size, adj_set, adj_par
     
     pred_newborns, prey_newborns, pred_parents, prey_parents, _ = determine_newborns(K, S_current, A_prev, parental)
     newborns_mask = torch.concatenate((pred_newborns,prey_newborns)).long()
-
-    #newborns_mask = torch.logical_or(pred_newborns, prey_newborns)
-    #parents_mask = parental[newborns_mask].long()
-    #parents_mask = torch.concatenate((pred_parents,prey_parents)).long()
-    
-
-    #X[newborns_mask] = X_prev[parents_mask]
     
     X[pred_newborns] = X_prev[pred_parents]
     X[prey_newborns] = X_prev[prey_parents]
