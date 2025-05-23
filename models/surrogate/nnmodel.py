@@ -293,7 +293,7 @@ class NNModel:
         self.diffusion_timesteps = diffusion_timesteps
         self.aggregation = aggregation
         
-        self.graph_model = GNN(self.aggregation,self.state_dim,self.latent_dim,hidden=self.gnn_hidden_dims)
+        self.graph_model = GNN(self.aggregation,self.state_dim,self.graph_emb_dim,hidden=self.gnn_hidden_dims)
         self.ld_model = Network(dim = self.feature_dim,
                 hid_dims=self.ld_hidden_dims,
                 with_time_emb=True,
@@ -382,7 +382,7 @@ class NNModel:
                 prev_state_condition = state_t0[:,self.dynamic_feature_idx:]                                    # Slicing to exclude the stationary features
                                         
                 # Calculate loss
-                loss = self.p_losses(state_t1, state = prev_state_condition, label = graph_condition ,t = t_diffusion, T = self.diffusion_timesteps, loss_type="l2")
+                loss = self.p_losses(state_t1, state = prev_state_condition, label = graph_condition ,tau = t_diffusion, tau_max = self.diffusion_timesteps, loss_type="l2")
                 self.losses.append(loss.item())
 
                 # Propagate gradient back to diffusion model and GNN

@@ -129,7 +129,6 @@ class Network(nn.Module):
                 nn.Linear(self.condition_dim,self.condition_dim)
             )  
         else:
-            time_dim = None
             self.time_mlp = None
             
         if with_state_condition:
@@ -177,7 +176,7 @@ class Network(nn.Module):
 
         # Condition vector creation
         state = self.state_mlp(state) if exists(self.state_mlp) else None
-        domain_emb = self.graph_mlp(domain) if exists(self.graph_mlp) else None
+        domain_emb = self.domain_mlp(domain) if exists(self.domain_mlp) else None
         tau_emb = self.time_mlp(time) if exists(self.time_mlp) else None      
         condition = state + domain_emb + tau_emb 
         
