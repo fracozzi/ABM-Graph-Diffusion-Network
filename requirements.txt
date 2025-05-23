@@ -39,7 +39,9 @@ propcache==0.3.1
 psutil==7.0.0
 pyemd==1.0.0
 pyparsing==3.2.3
+pyrootutils==1.0.4
 python-dateutil==2.9.0.post0
+python-dotenv==1.1.0
 pytz==2025.2
 requests==2.32.3
 scipy==1.14.1
