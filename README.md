@@ -46,7 +46,7 @@ These scripts will produce the simulation trajectories and construct the graphâ€
 Once the datasets are ready, you can train the Graph Diffusion Network surrogate on a chosen ABM configuration. Use the following command-line options:
 
 ```bash
-python main.py \
+python train_model.py \
   --abm_model   <predatorprey|schelling> \
   --model_type  <surrogate|ablation> \
   --parameter   <psi1|psi2|psi3|psi4> \      # for predatorprey
@@ -61,13 +61,13 @@ python main.py \
 Train the surrogate on the Predatorâ€“Prey model with parameter psi2, a learning rate of 1e-4, 50 diffusion steps, and 200 epochs:
 
 ```bash
-python main.py \
+python train_model.py \
   --abm_model predatorprey \
   --model_type surrogate \
   --parameter psi2 \
-  --learning_rate 1e-4 \
-  --T_diffusion 50 \
-  --n_epochs 200
+  --learning_rate 1e-5 \
+  --T_diffusion 100 \
+  --n_epochs 100
 ```
 
 Use -h or --help to display all available options and their defaults:
