@@ -10,10 +10,10 @@ import os
 
 def main():
 
-    parser = argparse.ArgumentParser(description='Generate a ramification data set with Schelling ABM')
+    parser = argparse.ArgumentParser(description='Train surrogate model on an ABM')
     parser.add_argument('--abm_model', type=str, default='predatorprey', help='choose between predatorprey and schelling (default: predatorprey)')
     parser.add_argument('--model_type', type=str, default='surrogate', help='choose between surrogate and ablation (default: surrogate)')
-    parser.add_argument('--parameter', type=str, default='psi1', help='choose parameter between: xi1, xi2, xi3 for schellin; and psi1, psi2, psi3, psi4 for predator-prey (default: psi1)')
+    parser.add_argument('--parameter', type=str, default='psi1', help='choose parameter between: xi1, xi2, xi3 for schelling; and psi1, psi2, psi3, psi4 for predator-prey (default: psi1)')
     parser.add_argument('--learning_rate', type=float, default=1e-5, help='learning rate for the model (default: 1e-5)')
     parser.add_argument('--T_diffusion', type=int, default=100, help='number of diffusion steps (default: 100)')
     parser.add_argument('--n_epochs', type=int, default=100, help='number of epochs for training (default: 100)')  
