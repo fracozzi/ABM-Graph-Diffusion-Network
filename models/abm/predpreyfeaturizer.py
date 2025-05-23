@@ -1,5 +1,4 @@
 from models.abm.abm import ABMFeaturizer
-#from schelling import SCHELLING_STATE_VARIABLES, grid_max_val
 from models.abm.predatorprey import VARIABLES, GRID_SIZE
 
 import numpy as np
@@ -14,7 +13,7 @@ class PredPreyFeaturizer(ABMFeaturizer):
     def __init__(self):
         pass
 
-    def get_shape_state_features(self,state: np.array) -> tuple:
+    def get_shape_state_features(self) -> tuple:
         # (state dimension, number of classes for discrete feature)
         return (2,2)
     
