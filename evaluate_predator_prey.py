@@ -1,6 +1,7 @@
 from models.abm.abm import ABM
 from models.surrogate.nnmodel import NNModel, SimulatedABM
-from models.surrogate.nnmodel_ablation import NNModel_ablation, SimulatedABM_ablation1
+from models.surrogate.nnmodel_diffusion_only import NNModel_diffusion_only, SimulatedABM_diffusion_only
+from models.surrogate.nnmodel_gnn_only import GNNModel, SimulatedABM_GNN_only
 from models.abm.predatorprey import PredatorPreyABM, GRID_SIZE
 from models.abm.predpreyfeaturizer import PredPreyFeaturizer
 
@@ -105,14 +106,14 @@ def plot_forecast(ramification,forecasting_GT,forecasting_surrogate,image_path):
 def main():
 
     parser = argparse.ArgumentParser(description='Train surrogate model on an ABM')
-    parser.add_argument('--model_type', type=str, default='surrogate', help='choose between surrogate and ablation (default: surrogate)')
+    parser.add_argument('--model_type', type=str, default='GDN', help='choose between GDN, diffusion-only and gnn-only (default: surrogate)')
     parser.add_argument('--psi', type=str, default='psi1', help='choose parameter between psi1, psi2, psi3, psi4 (default: psi1)')
     args = parser.parse_args()
 
     model_type = args.model_type
     psi = args.psi
 
-    save_dir = f'./result/predatorprey/{model_type}/'
+    save_dir = f'./results/predatorprey/{model_type}/'
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)   
 
@@ -173,7 +174,7 @@ def main():
     predatorprey_abm = PredatorPreyABM(Psi=psi_dict[psi],n_agents=M,max_agent=N_MAX,
                                     grid_fill_p=grid_fill_p,predators_p=predators_p,
                                     grid_size=GRID_SIZE)
-    n_samples = 100
+    n_samples = 2
     simulation_time = 25
     ground_truth = []
     
@@ -190,34 +191,55 @@ def main():
         pickle.dump(ground_truth, f)
 
     
+    # Load trained model and generate surrogate forecasting
 
-    surrogate_model = []
-    if model_type == 'surrogate':
-        # Learnig
-        diffusion_timesteps = torch.load(f'./trained_models/predatorprey/{model_type}/model_{model_type}_{psi}.pth')['diffusion_timesteps']
-        learning_rate = torch.load(f'./trained_models/predatorprey/{model_type}/model_{model_type}_{psi}.pth')['learning_rate']
-        aggregation = torch.load(f'./trained_models/predatorprey/{model_type}/model_{model_type}_{psi}.pth')['aggregation']
+    surrogate_model = [] 
+
+    if model_type == 'GDN':
+        model_dict = torch.load(f'./trained_models/predatorprey/{model_type}/model_{model_type}_{psi}.pth',weights_only=False)
+        diffusion_timesteps = model_dict['diffusion_timesteps']
+        learning_rate = model_dict['learning_rate']
+        aggregation = model_dict['aggregation']
         model = NNModel(n_features = 6, learning_rate=learning_rate, abm_featurizer = PredPreyFeaturizer(), diffusion_timesteps=diffusion_timesteps,aggregation=aggregation)
-        model.ld_model.load_state_dict(torch.load(f'./trained_models/predatorprey/{model_type}/model_{model_type}_{psi}.pth')['ld_model_state_dict'])
-        model.graph_model.load_state_dict(torch.load(f'./trained_models/predatorprey/{model_type}/model_{model_type}_{psi}.pth')['graph_model_state_dict'])
+        model.ld_model.load_state_dict(model_dict['ld_model_state_dict'])
+        model.graph_model.load_state_dict(model_dict['graph_model_state_dict'])
                                           
         for tt in tqdm(range(n_samples),desc='Surrogate forecast'):
             simulated_model = SimulatedABM(initial_state=initial_condition,model=model) 
             seed = random.randint(0,10000)
             surrogate_model.append(simulated_model.simulation_pp(simulation_time=simulation_time,seed=seed))
 
-    elif model_type == 'ablation':
-        diffusion_timesteps = torch.load(f'./trained_models/predatorprey/{model_type}/model_{model_type}_{psi}.pth')['diffusion_timesteps']
-        learning_rate = torch.load(f'./trained_models/predatorprey/{model_type}/model_{model_type}_{psi}.pth')['learning_rate']
-        model = NNModel_ablation(n_features = 6, learning_rate=learning_rate, abm_featurizer = PredPreyFeaturizer(), diffusion_timesteps=diffusion_timesteps,
+    elif model_type == 'diffusion-only':
+        model_dict = torch.load(f'./trained_models/predatorprey/{model_type}/model_{model_type}_{psi}.pth',weights_only=False)
+        diffusion_timesteps = model_dict['diffusion_timesteps']
+        learning_rate = model_dict['learning_rate']
+        model = NNModel_diffusion_only(n_features = 6, learning_rate=learning_rate, abm_featurizer = PredPreyFeaturizer(), diffusion_timesteps=diffusion_timesteps,
                                         domain_dim=featurizer.scale_abm_state(ramification[0][0]).flatten().shape[0])
-        model.ld_model.load_state_dict(torch.load(f'./trained_models/predatorprey/{model_type}/model_{model_type}_{psi}.pth')['ld_model_state_dict'])
+        model.ld_model.load_state_dict(model_dict['ld_model_state_dict'])
 
         for tt in tqdm(range(n_samples),desc='Surrogate forecast'):
-            simulated_model = SimulatedABM_ablation1(initial_state=initial_condition,model=model) 
+            simulated_model = SimulatedABM_diffusion_only(initial_state=initial_condition,model=model) 
             seed = random.randint(0,10000)
             surrogate_model.append(simulated_model.simulation_pp(simulation_time=simulation_time,seed=seed))
     
+    elif model_type == 'gnn-only':
+        model_dict = torch.load(f'./trained_models/predatorprey/{model_type}/model_{model_type}_{psi}.pth',weights_only=False)
+        aggregation = model_dict['aggregation']
+        model = GNNModel(n_features = 6, abm_featurizer = featurizer, aggregation = aggregation)
+        model.graph_model.load_state_dict(model_dict['graph_model_state_dict'])
+                                          
+        for tt in tqdm(range(n_samples),desc='Surrogate forecast'):
+            simulated_model = SimulatedABM_GNN_only(initial_state=initial_condition,model=model) 
+            seed = random.randint(0,10000)
+            surrogate_model.append(simulated_model.simulation_pp(simulation_time=simulation_time,seed=seed))
+    
+    else:
+        raise ValueError(
+            f"model_type '{model_type}' not recognized. Choose among "
+            "['GDN', 'diffusion-only', 'gnn-only']."
+        )
+
+
     surrogate_model = np.array(surrogate_model)
     path = os.path.join(save_dir, f"forecasting_{model_type}_{psi}.pickle")
     with open(path,'wb') as f:
