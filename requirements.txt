@@ -10,5 +10,5 @@ scipy==1.14.1
 seaborn==0.13.2
 tqdm==4.67.1
 urllib3==2.2.3
-gzip
-pyrootutils
+gzip==1.12
+pyrootutils==1.0.4
