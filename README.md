@@ -49,7 +49,7 @@ Once the datasets are ready, you can train the Graph Diffusion Network surrogate
 ```bash
 python train_model.py \
   --abm_model   <predatorprey|schelling> \
-  --model_type  <surrogate|diffusion-only> \
+  --model_type  <surrogate|diffusion-only|gnn-only> \
   --parameter   <psi1|psi2|psi3|psi4> \      # for predatorprey
                <xi1|xi2|xi3> \               # for schelling
   --learning_rate  <float> \
