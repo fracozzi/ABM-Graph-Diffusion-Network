@@ -2,7 +2,6 @@ from models.abm.abm import ABMFeaturizer
 from models.abm.schelling import SCHELLING_STATE_VARIABLES, grid_max_val
 
 import numpy as np
-import torch
 
 class SchellingFeaturizer(ABMFeaturizer):
     """ Class that can transform a state as produced by SchellingABM into the input of our general model.

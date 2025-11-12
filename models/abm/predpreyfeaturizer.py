@@ -2,7 +2,6 @@ from models.abm.abm import ABMFeaturizer
 from models.abm.predatorprey import VARIABLES, GRID_SIZE
 
 import numpy as np
-import torch
 
 class PredPreyFeaturizer(ABMFeaturizer):
     """ Class that can transform a state as produced by SchellingABM into the input of our general model.
