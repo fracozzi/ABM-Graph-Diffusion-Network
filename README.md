@@ -49,7 +49,7 @@ Once the datasets are ready, you can train the Graph Diffusion Network surrogate
 ```bash
 python train_model.py \
   --abm_model   <predatorprey|schelling> \
-  --model_type  <surrogate|diffusion-only|gnn-only> \
+  --model_type  <GDN|diffusion-only|gnn-only> \
   --parameter   <psi1|psi2|psi3|psi4> \      # for predatorprey
                <xi1|xi2|xi3> \               # for schelling
   --learning_rate  <float> \
@@ -59,12 +59,12 @@ python train_model.py \
 
 **Example:**
 
-Train the surrogate on the Predator–Prey model with parameter psi1, a learning rate of 1e-5, 100 diffusion steps, and 100 epochs:
+Train the GDN model on the Predator–Prey model with parameter psi1, a learning rate of 1e-5, 100 diffusion steps, and 100 epochs:
 
 ```bash
 python train_model.py \
   --abm_model predatorprey \
-  --model_type surrogate \
+  --model_type GDN \
   --parameter psi1 \
   --learning_rate 1e-5 \
   --T_diffusion 100 \
@@ -83,14 +83,14 @@ After training, assess model fidelity on held-out trajectories using the provide
 
 ```bash
 python evaluate_predator_prey.py \
-  --model_type <surrogate|diffusion-only|gnn-only> \
+  --model_type <GDN|diffusion-only|gnn-only> \
   --psi        <psi1|psi2|psi3|psi4>
 ```
 
-For example, to evaluate the surrogate model trained with psi1:
+For example, to evaluate the GDN model trained with psi1:
 
 ```bash
-python evaluate_predator_prey.py --model_type surrogate --psi psi1
+python evaluate_predator_prey.py --model_type GDN --psi psi1
 ```
 
 #### Notes
