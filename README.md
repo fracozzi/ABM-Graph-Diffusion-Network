@@ -83,7 +83,7 @@ After training, assess model fidelity on held-out trajectories using the provide
 
 ```bash
 python evaluate_predator_prey.py \
-  --model_type <surrogate|diffusion-only> \
+  --model_type <surrogate|diffusion-only|gnn-only> \
   --psi        <psi1|psi2|psi3|psi4>
 ```
 
@@ -95,5 +95,5 @@ python evaluate_predator_prey.py --model_type surrogate --psi psi1
 
 #### Notes
 
-For further assistance, please refer to the comments in the scripts or notebooks.
+For further assistance, please refer to the comments in the scripts or notebooks, or feel free to contact me at: f.cozzi@uniroma1.it
 
