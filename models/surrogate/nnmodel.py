@@ -273,7 +273,7 @@ class Diffusion:
 # Defining the whole model + training + sampling
 
 class NNModel:
-    """ Our neural network model. """
+    """ Our GDN model combining GNN and diffusion."""
 
     def __init__(self, n_features, learning_rate, abm_featurizer: ABMFeaturizer, diffusion_timesteps, aggregation):
 
@@ -281,8 +281,8 @@ class NNModel:
 
         self.abm_featurizer = abm_featurizer
         self.feature_dim = n_features
-        self.dynamic_feature_idx = self.abm_featurizer.get_shape_state_features()[0]
-        self.state_dim = self.feature_dim + self.abm_featurizer.get_shape_state_features()[0]
+        self.static_feature_dim = self.abm_featurizer.get_shape_state_features()[0]
+        self.state_dim = self.feature_dim + self.static_feature_dim
 
         self.ld_hidden_dims = [128,256,1024,1024,256,128]
         self.gnn_hidden_dims = [32,64,128]
@@ -372,14 +372,14 @@ class NNModel:
                 # Scale features for future state
                 state_t1 = self.abm_featurizer.scale_abm_state(next_state)
                     
-                state_t1 = torch.tensor(state_t1[:,self.dynamic_feature_idx:]).to(torch.float32).to(device)    # Slicing to exclude the stationary features
+                state_t1 = torch.tensor(state_t1[:,self.static_feature_dim:]).to(torch.float32).to(device)    # Slicing to exclude the stationary features
                 
                 # Sample random timestep for the diffusion process
                 t_diffusion = torch.randint(0, self.diffusion_timesteps, (n_agents,), device = device).long()
                     
                 # Calculate hidden rappresentation relative to timestep t on entire state
                 graph_condition = self.graph_model(state_t0, edges_t0)
-                prev_state_condition = state_t0[:,self.dynamic_feature_idx:]                                    # Slicing to exclude the stationary features
+                prev_state_condition = state_t0[:,self.static_feature_dim:]                                    # Slicing to exclude the stationary features
                                         
                 # Calculate loss
                 loss = self.p_losses(state_t1, state = prev_state_condition, label = graph_condition ,tau = t_diffusion, tau_max = self.diffusion_timesteps, loss_type="l2")
@@ -424,7 +424,7 @@ class NNModel:
         edges = torch.tensor(self.abm_featurizer.get_interaction_graph(state)).to(device)
         state_array = self.abm_featurizer.scale_abm_state(state)
         condition = torch.tensor(state_array).to(torch.float32).to(device)
-        state_tensor = condition[:,self.dynamic_feature_idx:].to(torch.float32).to(device)
+        state_tensor = condition[:,self.static_feature_dim:].to(torch.float32).to(device)
        
         n, c = state_tensor.size()
         label = self.graph_model(condition,edges)
