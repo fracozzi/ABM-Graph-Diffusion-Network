@@ -1,8 +1,3 @@
-from models.surrogate.nnmodel import NNModel
-from models.surrogate.nnmodel_ablation import NNModel_ablation
-from models.abm.predpreyfeaturizer import PredPreyFeaturizer
-from models.abm.schellingfeaturizer import SchellingFeaturizer
-
 import torch
 import argparse
 import pickle
@@ -12,7 +7,7 @@ def main():
 
     parser = argparse.ArgumentParser(description='Train surrogate model on an ABM')
     parser.add_argument('--abm_model', type=str, default='predatorprey', help='choose between predatorprey and schelling (default: predatorprey)')
-    parser.add_argument('--model_type', type=str, default='surrogate', help='choose between surrogate and ablation (default: surrogate)')
+    parser.add_argument('--model_type', type=str, default='GDN', help='choose between GDN, diffusion-only and gnn-only (default: GDN)')
     parser.add_argument('--parameter', type=str, default='psi1', help='choose parameter between: xi1, xi2, xi3 for schelling; and psi1, psi2, psi3, psi4 for predator-prey (default: psi1)')
     parser.add_argument('--learning_rate', type=float, default=1e-5, help='learning rate for the model (default: 1e-5)')
     parser.add_argument('--T_diffusion', type=int, default=100, help='number of diffusion steps (default: 100)')
@@ -35,19 +30,42 @@ def main():
 
     # Initialize the model
     if abm_model == 'predatorprey':
+        from models.abm.predpreyfeaturizer import PredPreyFeaturizer
         featurizer = PredPreyFeaturizer()
-        if model_type == 'surrogate':
+        if model_type == 'GDN':
+            from models.surrogate.nnmodel import NNModel
             model = NNModel(n_features = 6, learning_rate=learning_rate, abm_featurizer = featurizer,diffusion_timesteps=T_diffusion,aggregation='add')
-        elif model_type == 'ablation':
-            model = NNModel_ablation(n_features = 6, learning_rate=learning_rate, abm_featurizer = featurizer, diffusion_timesteps=T_diffusion,
+        elif model_type == 'diffusion-only':
+            from models.surrogate.nnmodel_diffusion_only import NNModel_diffusion_only
+            model = NNModel_diffusion_only(n_features = 6, learning_rate=learning_rate, abm_featurizer = featurizer, diffusion_timesteps=T_diffusion,
                                         domain_dim=featurizer.scale_abm_state(ramification_training[0][0]).flatten().shape[0])
+        elif model_type == 'gnn-only':
+            from models.surrogate.nnmodel_gnn_only import GNNModel
+            model = GNNModel(n_features = 6, abm_featurizer = featurizer, aggregation='add')
+        else:
+            raise ValueError(
+                f"model_type '{model_type}' not recognized. Choose among "
+                "['GDN', 'diffusion-only', 'gnn-only']."
+            )
+    
     elif abm_model == 'schelling':
+        from models.abm.schellingfeaturizer import SchellingFeaturizer
         featurizer = SchellingFeaturizer()
-        if model_type == 'surrogate':
+        if model_type == 'GDN':
+            from models.surrogate.nnmodel import NNModel
             model = NNModel(n_features = 2, learning_rate=learning_rate, abm_featurizer = featurizer, diffusion_timesteps=T_diffusion, aggregation='mean')
-        elif model_type == 'ablation':
-            model = NNModel_ablation(n_features = 2, learning_rate=learning_rate, abm_featurizer = featurizer, diffusion_timesteps=T_diffusion,
+        elif model_type == 'diffusion-only':
+            from models.surrogate.nnmodel_diffusion_only import NNModel_diffusion_only
+            model = NNModel_diffusion_only(n_features = 2, learning_rate=learning_rate, abm_featurizer = featurizer, diffusion_timesteps=T_diffusion,
                                         domain_dim=featurizer.scale_abm_state(ramification_training[0][0]).flatten().shape[0])
+        elif model_type == 'gnn-only':
+            from models.surrogate.nnmodel_gnn_only import GNNModel
+            model = GNNModel(n_features = 2, abm_featurizer = featurizer, aggregation='mean')
+        else:
+            raise ValueError(
+                f"model_type '{model_type}' not recognized. Choose among "
+                "['GDN', 'diffusion-only', 'gnn-only']."
+            )
 
     model.train(ramification_training, n_epochs=n_epochs)
 
@@ -56,8 +74,8 @@ def main():
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)   
 
-    if model_type == 'surrogate':
-        save_path = os.path.join(save_dir, f"model_surrogate_{parameter}.pth")
+    if model_type == 'GDN':
+        save_path = os.path.join(save_dir, f"model_GDN_{parameter}.pth")
         torch.save({'ld_model_state_dict': model.ld_model.state_dict(),
                     'graph_model_state_dict': model.graph_model.state_dict(),
                     'diffusion_timesteps': model.diffusion_timesteps,
@@ -66,9 +84,19 @@ def main():
                     'losses': model.losses
                     }, save_path)
     
-    if model_type == 'ablation':
-        save_path = os.path.join(save_dir, f"model_ablation_{parameter}.pth")
+    elif model_type == 'diffusion-only':
+        save_path = os.path.join(save_dir, f"model_diffusion-only_{parameter}.pth")
         torch.save({'ld_model_state_dict': model.ld_model.state_dict(),
+                    'diffusion_timesteps': model.diffusion_timesteps,
+                    'learning_rate': model.lr_ld,
+                    'losses': model.losses
+                    }, save_path)
+    
+    elif model_type == 'gnn-only':
+        save_path = os.path.join(save_dir, f"model_gnn-only_{parameter}.pth")
+        torch.save({'graph_model_state_dict': model.graph_model.state_dict(),
+                    'learning_rate': model.lr_gnn,
+                    'aggregation': model.aggregation,
                     'losses': model.losses
                     }, save_path)
 
