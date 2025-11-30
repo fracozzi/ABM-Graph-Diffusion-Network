@@ -122,7 +122,7 @@ class GNNModel:
 
     
     @torch.no_grad()
-    def next_step_samples(self, state: np.ndarray, seed=42, n_samples=1) -> np.ndarray:
+    def next_step_samples(self, state: np.ndarray, n_samples=1) -> np.ndarray:
         """ Given a matrix representing the state at t, returns a list of possible outcomes,
             where each element of the list is a matrix representing the state at t+1.
         """
@@ -150,26 +150,26 @@ class SimulatedABM_GNN_only(ABM):
     def initial_state(self):
         return self.initial_state_np
 
-    def next_step(self, state: np.ndarray, seed: int) -> np.ndarray:
+    def next_step(self, state: np.ndarray) -> np.ndarray:
         """ Given a matrix representing the state at t, 
             returns a matrix representing state at t+1.
         """
-        return self.model.next_step_samples(state=state, seed=seed, n_samples=1)[0]
+        return self.model.next_step_samples(state=state, n_samples=1)[0]
     
-    def simulation_schelling(self,simulation_time: int, seed: int) -> np.ndarray:
+    def simulation_schelling(self,simulation_time: int) -> np.ndarray:
         n, c = np.shape(self.initial_state_np)
         simulation_array = np.empty((simulation_time,n,c))
         colors = np.expand_dims(self.initial_state_np[:,-1],axis=0).T 
         new_state = self.initial_state_np
         simulation_array[0] = new_state
         for t in range(1,simulation_time): 
-            state_variables = self.model.next_step_samples(state=new_state,seed=seed,n_samples=1)[0]
+            state_variables = self.model.next_step_samples(state=new_state,n_samples=1)[0]
             new_state = np.hstack((state_variables,colors))
             simulation_array[t] = new_state
         
         return simulation_array
     
-    def simulation_pp(self,simulation_time: int, seed: int) -> np.ndarray:
+    def simulation_pp(self,simulation_time: int) -> np.ndarray:
         self.initial_state_np = np.delete(self.initial_state_np,7,axis=1)
         n, c = np.shape(self.initial_state_np)
         simulation_array = np.empty((simulation_time,n,c))
@@ -178,12 +178,10 @@ class SimulatedABM_GNN_only(ABM):
         family = self.initial_state_np[:,-2:]
         new_state = self.initial_state_np
         simulation_array[0] = new_state
-        new_seed = seed
         for t in tqdm(range(1,simulation_time),desc='Simulation'): 
-            state_variables = self.model.next_step_samples(state=new_state,seed=new_seed,n_samples=1)[0]
+            state_variables = self.model.next_step_samples(state=new_state,n_samples=1)[0]
             family = update_parental(torch.tensor(family),torch.tensor(kind),torch.tensor(state_variables[:,:4].T)).numpy()
             new_state = np.hstack((kind_expanded,state_variables,family))
             simulation_array[t] = new_state
-            new_seed = random.randint(0,10000)
         
         return simulation_array
