@@ -10,6 +10,7 @@ from torch.optim import Adam
 from tqdm.auto import tqdm 
 from torch_geometric.nn import MessagePassing
 from tqdm import tqdm
+import time
 
 
 # Utility functions 
@@ -260,15 +261,54 @@ class Diffusion:
     
     # Forward diffusion process
 
-    def q_sample(self,x_start, tau, noise=None):
+    def q_sample(self,x_start, t, noise=None):
         if noise is None:
             noise = torch.randn_like(x_start)
 
-        sqrt_alphas_cumprod_tau = extract(self.sqrt_alphas_cumprod, tau, x_start.shape)
-        sqrt_one_minus_alphas_cumprod_tau = extract(
-            self.sqrt_one_minus_alphas_cumprod, tau, x_start.shape
+        sqrt_alphas_cumprod_t = extract(self.sqrt_alphas_cumprod, t, x_start.shape)
+        sqrt_one_minus_alphas_cumprod_t = extract(
+            self.sqrt_one_minus_alphas_cumprod, t, x_start.shape
         )
-        return sqrt_alphas_cumprod_tau * x_start + sqrt_one_minus_alphas_cumprod_tau * noise
+        return sqrt_alphas_cumprod_t * x_start + sqrt_one_minus_alphas_cumprod_t * noise
+
+
+# Class to create dataset from ABM ramifications and load all on device
+class ABMSampleDataset(torch.utils.data.Dataset):
+    def __init__(self, ramifications, n_ramifications, abm_featurizer, device):
+        self.device = device
+        self.samples = []
+        self.static_feature_dim = abm_featurizer.get_shape_state_features()[0]
+
+        print(len(ramifications), n_ramifications)
+        assert len(ramifications[1]) >= n_ramifications
+
+        n_timesteps = len(ramifications) - 1
+        n_runs = n_ramifications
+
+        for t in range(n_timesteps):
+            prev_state = ramifications[t][0]
+            state_t0 = abm_featurizer.scale_abm_state(prev_state)
+            edge_index = abm_featurizer.get_interaction_graph(prev_state)
+            for run in range(n_runs):
+                next_state = ramifications[t+1][run]
+                state_t1 = abm_featurizer.scale_abm_state(next_state)
+                self.samples.append({
+                    "x_t": torch.tensor(state_t0, dtype=torch.float32),
+                    "edge_index": torch.tensor(edge_index, dtype=torch.long),
+                    "y_t": torch.tensor(state_t1[:, self.static_feature_dim:], dtype=torch.float32)
+                })
+
+    def __len__(self):
+        return len(self.samples)
+
+    def __getitem__(self, idx):
+        sample = self.samples[idx]
+        return (
+            sample["x_t"].to(self.device),
+            sample["edge_index"].to(self.device),
+            sample["y_t"].to(self.device)
+        )
+
 
 # Defining the whole model + training + sampling
 
@@ -276,43 +316,48 @@ class NNModel:
     """ Our GDN model combining GNN and diffusion."""
 
     def __init__(self, n_features, learning_rate, abm_featurizer: ABMFeaturizer, diffusion_timesteps, aggregation):
-
-        """ Initialize the model. """
+        
 
         self.abm_featurizer = abm_featurizer
-        self.feature_dim = n_features
-        self.static_feature_dim = self.abm_featurizer.get_shape_state_features()[0]
-        self.state_dim = self.feature_dim + self.static_feature_dim
 
+        # Diffusion only sees dynamic features (self.feature_dim)
+        self.feature_dim = n_features 
+
+        # Dimension of static features (e.g., agent type) placed at beginning of state vector
+        # Not seen by diffusion (self.static_feature_dim used for slicing)
+        self.static_feature_dim = self.abm_featurizer.get_shape_state_features()[0]
+
+        # Full state dimension (static + dynamic) seen by GNN
+        self.state_dim = self.feature_dim + self.static_feature_dim
+        
         self.ld_hidden_dims = [128,256,1024,1024,256,128]
         self.gnn_hidden_dims = [32,64,128]
-        self.graph_emb_dim = 256
-
+        self.latent_dim = 256
         self.lr_ld = learning_rate
         self.lr_gnn = 2*learning_rate
         self.diffusion_timesteps = diffusion_timesteps
         self.aggregation = aggregation
         
-        self.graph_model = GNN(self.aggregation,self.state_dim,self.graph_emb_dim,hidden=self.gnn_hidden_dims)
+        self.graph_model = GNN(self.aggregation,self.state_dim,self.latent_dim,hidden=self.gnn_hidden_dims)
         self.ld_model = Network(dim = self.feature_dim,
                 hid_dims=self.ld_hidden_dims,
                 with_time_emb=True,
-                with_state_condition=True,
                 with_graph=True,
-                graph_dim=self.graph_emb_dim
-                )
-
+                graph_dim=self.latent_dim,
+                with_state_condition=True
+        )
         self.optimizer1 = Adam(self.ld_model.parameters(),lr=self.lr_ld)
         self.optimizer2 = Adam(self.graph_model.parameters(),lr=self.lr_gnn)
         self.losses = []
+        self.time = []
         
 
-    def p_losses(self,x_start,state,label,tau,tau_max,noise=None,loss_type="l2"):
+    def p_losses(self,x_start,state,label,t,T,noise=None,loss_type="l2"):
         if noise is None:
             noise = torch.randn_like(x_start)
-        diffusion = Diffusion(diffusion_timesteps=tau_max)
-        x_noisy = diffusion.q_sample(x_start=x_start, tau=tau, noise=noise)
-        predicted_noise = self.ld_model(x_noisy, state, label, tau)
+        diffusion = Diffusion(diffusion_timesteps=T)
+        x_noisy = diffusion.q_sample(x_start=x_start, t=t, noise=noise)
+        predicted_noise = self.ld_model(x_noisy, state, label, t)
 
         if loss_type == 'l1':
             loss = F.l1_loss(noise, predicted_noise)
@@ -324,71 +369,48 @@ class NNModel:
             raise NotImplementedError()
 
         return loss
+    
 
-    def train(self, ramifications, n_epochs=100):
-
-        """ Train the model using a `ramification` dataset """
+    def train(self, ramifications, n_ramifications = 100, n_epochs=10):
 
         device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.ld_model.to(device)
         self.graph_model.to(device)
+        self.ld_model.to(device)
 
-        # Get the number of timesteps and runs from ramification dataset
-        n_timesteps = len(ramifications[1:])
-        n_runs = len(ramifications[1])
-
-        # Randomize runs and timesteps
-        runs = np.expand_dims(np.arange(0,n_runs),axis=-1)
-        sample_number = np.empty((n_timesteps,n_runs,2))
-        for t in range(n_timesteps):
-            times = np.full((n_runs,1),t)
-            sample_number[t] = np.hstack((times,runs))
-        sample_number = np.vstack((sample_number))
-        sample_number = sample_number.astype(int)
-
-        # Train the model over epochs
-
+        print('Transfering data to device:', device)
+        dataset = ABMSampleDataset(ramifications, n_ramifications, self.abm_featurizer, device)
+        print('Creating DataLoader')
+        dataloader = torch.utils.data.DataLoader(dataset, batch_size=1, shuffle=True)
+        self.time.append(time.time())
         for epoch in tqdm(range(n_epochs), desc="Training"):
-
-            examples = random.sample(range(len(sample_number)),len(sample_number))
-
-            for example in examples:
-
+            for x_t, edge_index, y_t in dataloader:
                 self.optimizer1.zero_grad()
                 self.optimizer2.zero_grad()
 
-                t, run = sample_number[example]
-                
-                prev_state = ramifications[t][0]
+                # Graph takes both static and dynamic features
+                graph_condition = self.graph_model(x_t[0], edge_index[0])
 
-                # Get interaction graph and scale features for the current state
-                edges_t0 = torch.tensor(self.abm_featurizer.get_interaction_graph(prev_state)).to(device)
-                state_t0 = self.abm_featurizer.scale_abm_state(prev_state)
-                state_t0 = torch.tensor(state_t0).to(torch.float32).to(device)
-                n_agents = prev_state.shape[0]
+                # Diffusion takes only dynamic features (both prev_state and future state target)
+                prev_state_condition = x_t[0][:, self.static_feature_dim:]
 
-                next_state = ramifications[t+1][run]
+                t_diffusion = torch.randint(
+                    0, self.diffusion_timesteps, (x_t.shape[1],), device=device
+                ).long()
 
-                # Scale features for future state
-                state_t1 = self.abm_featurizer.scale_abm_state(next_state)
-                    
-                state_t1 = torch.tensor(state_t1[:,self.static_feature_dim:]).to(torch.float32).to(device)    # Slicing to exclude the stationary features
-                
-                # Sample random timestep for the diffusion process
-                t_diffusion = torch.randint(0, self.diffusion_timesteps, (n_agents,), device = device).long()
-                    
-                # Calculate hidden rappresentation relative to timestep t on entire state
-                graph_condition = self.graph_model(state_t0, edges_t0)
-                prev_state_condition = state_t0[:,self.static_feature_dim:]                                    # Slicing to exclude the stationary features
-                                        
-                # Calculate loss
-                loss = self.p_losses(state_t1, state = prev_state_condition, label = graph_condition ,tau = t_diffusion, tau_max = self.diffusion_timesteps, loss_type="l2")
-                self.losses.append(loss.item())
+                loss = self.p_losses(
+                    y_t[0], state=prev_state_condition,
+                    label=graph_condition,
+                    t=t_diffusion,
+                    T=self.diffusion_timesteps,
+                    loss_type="l2"
+                )
 
-                # Propagate gradient back to diffusion model and GNN
                 loss.backward()
                 self.optimizer1.step()
                 self.optimizer2.step()
+
+                self.losses.append(loss.item())
+            self.time.append(time.time())
 
 
     @torch.no_grad()
@@ -413,8 +435,9 @@ class NNModel:
 
             return model_mean + torch.sqrt(posterior_variance_t) * noise        
     
+
     @torch.no_grad()
-    def next_step_samples(self, state: np.ndarray, seed=42, n_samples=1) -> np.ndarray:
+    def next_step_samples(self, state: np.ndarray, n_samples=1) -> np.ndarray:
         """ Given a matrix representing the state at t, returns a list of possible outcomes,
             where each element of the list is a matrix representing the state at t+1.
         """
@@ -428,13 +451,13 @@ class NNModel:
        
         n, c = state_tensor.size()
         label = self.graph_model(condition,edges)
+        
         samples = []
-
-        torch.manual_seed(seed=seed)
+        # Loop over number of samples
         for j in range(b):
-            # Start from random sample
-            sample = torch.randn((n,c), device=device,)
-            # Learned reverse diffusion process
+            # Start from pure noise (for each example in the batch)
+            sample = torch.randn((n,c), device=device)
+            # Loop over diffusion process
             for i in reversed(range(0,self.diffusion_timesteps)):
                 sample = self.p_sample(sample, torch.full((n,), i, device=device, dtype=torch.long), i, state = state_tensor,label = label)
             samples.append(sample.cpu().numpy())
@@ -452,27 +475,26 @@ class SimulatedABM(ABM):
     def initial_state(self):
         return self.initial_state_np
 
-    def next_step(self, state: np.ndarray, seed: int) -> np.ndarray:
+    def next_step(self, state: np.ndarray) -> np.ndarray:
         """ Given a matrix representing the state at t, 
             returns a matrix representing state at t+1.
         """
-        return self.model.next_step_samples(state=state, seed=seed, n_samples=1)[0]
+        return self.model.next_step_samples(state=state,n_samples=1)[0]
     
-    def simulation_schelling(self,simulation_time: int, seed: int) -> np.ndarray:
+    def simulation_schelling(self,simulation_time: int) -> np.ndarray:
         n, c = np.shape(self.initial_state_np)
         simulation_array = np.empty((simulation_time,n,c))
         colors = np.expand_dims(self.initial_state_np[:,-1],axis=0).T 
         new_state = self.initial_state_np
         simulation_array[0] = new_state
         for t in range(1,simulation_time):
-            seed = random.randint(0,10000)
-            state_variables = self.model.next_step_samples(state=new_state,seed=seed,n_samples=1)[0]
+            state_variables = self.model.next_step_samples(state=new_state,n_samples=1)[0]
             new_state = np.hstack((state_variables,colors))
             simulation_array[t] = new_state
         
         return simulation_array
     
-    def simulation_pp(self,simulation_time: int, seed: int) -> np.ndarray:
+    def simulation_pp(self,simulation_time: int) -> np.ndarray:
         self.initial_state_np = np.delete(self.initial_state_np,7,axis=1)
         n, c = np.shape(self.initial_state_np)
         simulation_array = np.zeros((simulation_time,n,c))
@@ -482,14 +504,10 @@ class SimulatedABM(ABM):
         new_state = self.initial_state_np
         simulation_array[0] = new_state
         
-        new_seed = seed
         for t in tqdm(range(1,simulation_time),desc='Simulation'): 
-            state_variables = self.model.next_step_samples(state=new_state,seed=new_seed,n_samples=1)[0]
+            state_variables = self.model.next_step_samples(state=new_state,n_samples=1)[0]
             family = update_parental(torch.tensor(family),torch.tensor(kind),torch.tensor(state_variables[:,:4].T)).numpy()
             new_state = np.hstack((kind_expanded,state_variables,family))
             simulation_array[t] = new_state
-            new_seed = random.randint(0,10000)
 
         return simulation_array
-    
-    
