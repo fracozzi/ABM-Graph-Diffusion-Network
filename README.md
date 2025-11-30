@@ -25,6 +25,8 @@ The following Python libraries are required to run the GDN:
 - **NumPy, Pickle**: To manipulate arrays and save and load data.
 - **TQDM:** For displaying progress bars when running experiments.
 
+Our code was tested using Python version 3.12.
+
 To install all the required Python libraries, use the `requirements.txt` file provided in the repository:
 
 ```bash
