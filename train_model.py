@@ -22,8 +22,11 @@ def main():
     parser.add_argument('--parameter', type=str, default='psi1', help='choose parameter between: xi1, xi2, xi3 for schelling; and psi1, psi2, psi3, psi4 for predator-prey (default: psi1)')
     parser.add_argument('--learning_rate', type=float, default=1e-5, help='learning rate for the model (default: 1e-5)')
     parser.add_argument('--T_diffusion', type=int, default=100, help='number of diffusion steps (default: 100)')
-    parser.add_argument('--n_epochs', type=int, default=100, help='number of epochs for training (default: 100)')  
+    parser.add_argument('--n_epochs', type=int, default=100, help='number of epochs for training (default: 100)')
     args = parser.parse_args()
+
+    # Number of ramifications to use for training (500 adviced, but can be reduced for testing)
+    N_RAMIFICATIONS = 500
 
     # Load the configuration
     abm_model = args.abm_model
@@ -78,7 +81,7 @@ def main():
                 "['GDN', 'diffusion-only', 'gnn-only']."
             )
 
-    model.train(ramification_training, n_epochs=n_epochs)
+    model.train(ramifications = ramification_training, n_ramifications= 500, n_epochs=n_epochs)
 
     # Save the model
     save_dir = f'{MODELS_DIR}/{abm_model}/{model_type}/'
