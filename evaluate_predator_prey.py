@@ -15,6 +15,7 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 import argparse
 import os
+import gzip
 
 
 def generate_distributions(ramifications, model):
@@ -25,9 +26,8 @@ def generate_distributions(ramifications, model):
 
     surrogate_distributions = []
     for t, true_states in enumerate(ramifications[1:]):
-        seed = random.randint(0,10000)
         prev_state = ramifications[t][0]
-        simulated_states = model.next_step_samples(prev_state,seed = seed,n_samples=len(true_states))
+        simulated_states = model.next_step_samples(prev_state,n_samples=len(true_states))
         surrogate_distributions.append(simulated_states)
 
     surrogate_distributions = np.array(surrogate_distributions)
@@ -113,6 +113,8 @@ def main():
     model_type = args.model_type
     psi = args.psi
 
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+
     save_dir = f'./results/predatorprey/{model_type}/'
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)   
@@ -167,14 +169,14 @@ def main():
     
     # Get training ramification to start the simulation from the last state in training
 
-    with open(f'./ramifications/predatorprey/ramification_training_{psi}.pickle', 'rb') as f:
+    with gzip.open(f'./ramifications/predatorprey/ramification_training_{psi}.pickle.gz', 'rb') as f:
         ramification = pickle.load(f)
     initial_condition = ramification[-1][0]
 
     predatorprey_abm = PredatorPreyABM(Psi=psi_dict[psi],n_agents=M,max_agent=N_MAX,
                                     grid_fill_p=grid_fill_p,predators_p=predators_p,
                                     grid_size=GRID_SIZE)
-    n_samples = 2
+    n_samples = 100
     simulation_time = 25
     ground_truth = []
     
@@ -203,11 +205,12 @@ def main():
         model = NNModel(n_features = 6, learning_rate=learning_rate, abm_featurizer = PredPreyFeaturizer(), diffusion_timesteps=diffusion_timesteps,aggregation=aggregation)
         model.ld_model.load_state_dict(model_dict['ld_model_state_dict'])
         model.graph_model.load_state_dict(model_dict['graph_model_state_dict'])
+        model.ld_model.to(device)
+        model.graph_model.to(device)
                                           
         for tt in tqdm(range(n_samples),desc='Surrogate forecast'):
             simulated_model = SimulatedABM(initial_state=initial_condition,model=model) 
-            seed = random.randint(0,10000)
-            surrogate_model.append(simulated_model.simulation_pp(simulation_time=simulation_time,seed=seed))
+            surrogate_model.append(simulated_model.simulation_pp(simulation_time=simulation_time))
 
     elif model_type == 'diffusion-only':
         model_dict = torch.load(f'./trained_models/predatorprey/{model_type}/model_{model_type}_{psi}.pth',weights_only=False)
@@ -216,22 +219,22 @@ def main():
         model = NNModel_diffusion_only(n_features = 6, learning_rate=learning_rate, abm_featurizer = PredPreyFeaturizer(), diffusion_timesteps=diffusion_timesteps,
                                         domain_dim=featurizer.scale_abm_state(ramification[0][0]).flatten().shape[0])
         model.ld_model.load_state_dict(model_dict['ld_model_state_dict'])
+        model.ld_model.to(device)
 
         for tt in tqdm(range(n_samples),desc='Surrogate forecast'):
             simulated_model = SimulatedABM_diffusion_only(initial_state=initial_condition,model=model) 
-            seed = random.randint(0,10000)
-            surrogate_model.append(simulated_model.simulation_pp(simulation_time=simulation_time,seed=seed))
+            surrogate_model.append(simulated_model.simulation_pp(simulation_time=simulation_time))
     
     elif model_type == 'gnn-only':
         model_dict = torch.load(f'./trained_models/predatorprey/{model_type}/model_{model_type}_{psi}.pth',weights_only=False)
         aggregation = model_dict['aggregation']
         model = GNNModel(n_features = 6, abm_featurizer = featurizer, aggregation = aggregation)
         model.graph_model.load_state_dict(model_dict['graph_model_state_dict'])
+        model.graph_model.to(device)
                                           
         for tt in tqdm(range(n_samples),desc='Surrogate forecast'):
             simulated_model = SimulatedABM_GNN_only(initial_state=initial_condition,model=model) 
-            seed = random.randint(0,10000)
-            surrogate_model.append(simulated_model.simulation_pp(simulation_time=simulation_time,seed=seed))
+            surrogate_model.append(simulated_model.simulation_pp(simulation_time=simulation_time))
     
     else:
         raise ValueError(
@@ -241,6 +244,7 @@ def main():
 
 
     surrogate_model = np.array(surrogate_model)
+    
     path = os.path.join(save_dir, f"forecasting_{model_type}_{psi}.pickle")
     with open(path,'wb') as f:
         pickle.dump(surrogate_model, f)
@@ -253,24 +257,26 @@ def main():
     with open(path,'wb') as f:
         pickle.dump(aggregate_array, f)
     
-
+    
     # Load testing ramification to evaluate micro distributions
 
     with open(f'./ramifications/predatorprey/ramification_testing_{psi}.pickle','rb') as f:
         future_ramifications = pickle.load(f)
 
     micro_distributions = generate_distributions(future_ramifications,model)
+    
     path = os.path.join(save_dir, f"distributions_{model_type}_{psi}.pickle")
     with open(path,'wb') as f:
         pickle.dump(micro_distributions, f)
+    
 
     emd_array = micro_level_metric(future_ramifications,micro_distributions)
     
-
+    
     path = os.path.join(save_dir, f"emd_{model_type}_{psi}.pickle")
     with open(path,'wb') as f:
         pickle.dump(emd_array, f)
-
+    
 
 if __name__ == "__main__":
     main()
