@@ -30,7 +30,6 @@ class ABM(ABC):
             runs = []
             previous_state = main_next_state
             main_next_state = None
-            #for run in tqdm(range(n_ramifications), desc="Ramifications"):
             for run in range(n_ramifications):
                 state = self.next_step(previous_state)
                 runs.append(state)
